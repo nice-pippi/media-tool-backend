@@ -115,6 +115,18 @@ public class VideoServiceImpl implements VideoService {
         }
     }
 
+    @Override
+    public void download(String taskId, HttpServletResponse httpServletResponse) {
+        DownloadTask downloadTask = TASK_MAP.get(taskId);
+        if (!downloadTask.isCompleted()) {
+            throw BusinessException.of("任务未完成");
+        }
+
+        String filePath = downloadTask.getFilePath();
+
+        // 输出到httpServletResponse
+        FileUtil.outputFile(filePath, httpServletResponse);
+    }
 
     /**
      * 每小时清理一次过期任务
@@ -155,18 +167,6 @@ public class VideoServiceImpl implements VideoService {
         if (cleanCount > 0) {
             log.info("清理完成，共清理 {} 个过期任务", cleanCount);
         }
-    }
-
-    public void download(String taskId, HttpServletResponse httpServletResponse) {
-        DownloadTask downloadTask = TASK_MAP.get(taskId);
-        if (!downloadTask.isCompleted()) {
-            throw BusinessException.of("任务未完成");
-        }
-
-        String filePath = downloadTask.getFilePath();
-
-        // 输出到httpServletResponse
-        FileUtil.outputFile(filePath, httpServletResponse);
     }
 
 }

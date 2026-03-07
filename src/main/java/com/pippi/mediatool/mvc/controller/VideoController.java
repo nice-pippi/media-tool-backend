@@ -2,7 +2,7 @@ package com.pippi.mediatool.mvc.controller;
 
 import com.pippi.mediatool.common.R;
 import com.pippi.mediatool.mvc.co.TaskCO;
-import com.pippi.mediatool.service.impl.VideoServiceImpl;
+import com.pippi.mediatool.service.VideoService;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/video")
 public class VideoController {
     @Autowired
-    private VideoServiceImpl videoService;
+    private VideoService videoService;
 
     @PostMapping("/create-download-task")
     public R<Void> createDownloadTask(@RequestBody TaskCO co) {
