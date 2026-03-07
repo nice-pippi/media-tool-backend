@@ -31,13 +31,13 @@ public class JsonUtil {
     public static String toJSON(Object object) {
         try {
             if (object == null) {
-                throw new BusinessException("传递的参数object为null,请认真检查");
+                throw BusinessException.of("传递的参数 object 为 null，请认真检查");
             }
 
             return OBJECT_MAPPER.writeValueAsString(object);
         } catch (JsonProcessingException e) {
             e.printStackTrace();
-            throw new BusinessException("传递的对象不支持json转化/检查是否有get/set方法");
+            throw BusinessException.of("传递的对象不支持 json 转化/检查是否有get/set方法");
         }
     }
 
@@ -52,13 +52,13 @@ public class JsonUtil {
      */
     public static <T> T toObject(String json, Class<T> target) {
         if (StringUtils.isEmpty(json) || target == null) {
-            throw new BusinessException("传递的字符串或类不能为null");
+            throw BusinessException.of("传递的字符串或类不能为 null");
         }
         try {
             return OBJECT_MAPPER.readValue(json, target);
         } catch (JsonProcessingException e) {
             e.printStackTrace();
-            throw new BusinessException("json转化异常：" + e.getMessage());
+            throw BusinessException.of("json 转化异常：" + e.getMessage());
         }
     }
 
@@ -77,7 +77,8 @@ public class JsonUtil {
         try {
             return OBJECT_MAPPER.readValue(json, targetType);
         } catch (JsonProcessingException e) {
-            throw new BusinessException("JSON转换异常: " + e.getMessage());
+            throw BusinessException.of("JSON 转换异常：" + e.getMessage());
         }
     }
+
 }

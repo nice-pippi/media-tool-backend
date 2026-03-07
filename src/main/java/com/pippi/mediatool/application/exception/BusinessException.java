@@ -12,4 +12,8 @@ public class BusinessException extends RuntimeException {
         super(message);
     }
 
+    public static BusinessException of(String message) {
+        return new BusinessException(message);
+    }
+
 }

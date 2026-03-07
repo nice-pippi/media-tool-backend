@@ -1,13 +1,13 @@
 package com.pippi.mediatool.service.impl;
 
+import com.pippi.mediatool.application.exception.BusinessException;
 import com.pippi.mediatool.common.DownloadTask;
 import com.pippi.mediatool.common.constants.FilePathConstant;
 import com.pippi.mediatool.common.enums.FileTypeEnum;
-import com.pippi.mediatool.application.exception.BusinessException;
+import com.pippi.mediatool.common.utils.FileUtil;
 import com.pippi.mediatool.mvc.co.TaskCO;
 import com.pippi.mediatool.service.VideoService;
-import com.pippi.mediatool.common.utils.FileUtil;
-import com.pippi.mediatool.websocket.WebSocketServer;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import net.bramp.ffmpeg.FFmpeg;
 import net.bramp.ffmpeg.FFmpegExecutor;
@@ -111,7 +111,7 @@ public class VideoServiceImpl implements VideoService {
             FileUtil.deleteFile(fileName);
 
             log.error("下载视频异常：{}", e.getMessage());
-            throw new BusinessException("下载视频异常");
+            throw BusinessException.of("下载视频异常");
         }
     }
 
@@ -156,4 +156,17 @@ public class VideoServiceImpl implements VideoService {
             log.info("清理完成，共清理 {} 个过期任务", cleanCount);
         }
     }
+
+    public void download(String taskId, HttpServletResponse httpServletResponse) {
+        DownloadTask downloadTask = TASK_MAP.get(taskId);
+        if (!downloadTask.isCompleted()) {
+            throw BusinessException.of("任务未完成");
+        }
+
+        String filePath = downloadTask.getFilePath();
+
+        // 输出到httpServletResponse
+        FileUtil.outputFile(filePath, httpServletResponse);
+    }
+
 }
