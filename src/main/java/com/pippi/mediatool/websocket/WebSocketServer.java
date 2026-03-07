@@ -79,7 +79,7 @@ public class WebSocketServer {
      * @param taskId     任务唯一标识符
      * @param percentage 下载进度百分比（0-100）
      */
-    public static void sendProgress(String taskId, int percentage) {
+    public static void sendProgress(String taskId, String percentage) {
         Session session = sessionMap.get(taskId);
         if (session != null && session.isOpen()) {
             try {

@@ -87,9 +87,10 @@ public class VideoServiceImpl implements VideoService {
                 @Override
                 public void progress(Progress progress) {
                     // 下载进度百分比
-                    int percentage = (int) Math.round(progress.out_time_ns / duration_ns * 100);
-//                    WebSocketServer.sendProgress(taskId, percentage);
-                    log.info("视频下载进度: {}", percentage);
+                    double percentage = (progress.out_time_ns / duration_ns) * 100;
+                    String percentageStr = String.format("%.2f", percentage);
+//                    WebSocketServer.sendProgress(taskId, percentageStr);
+                    log.info("视频下载进度: {}%", percentageStr);
                 }
             });
 
@@ -98,7 +99,7 @@ public class VideoServiceImpl implements VideoService {
                 try {
                     job.run();
                     task.setCompleted(true);
-                    log.info("视频下载完成: {}", taskId);
+                    log.info("视频下载完成，任务id：{}", taskId);
                 } catch (Exception e) {
                     // 删除文件
                     FileUtil.deleteFile(fileName);
