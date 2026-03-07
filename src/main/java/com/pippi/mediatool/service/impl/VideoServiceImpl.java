@@ -88,7 +88,8 @@ public class VideoServiceImpl implements VideoService {
                 public void progress(Progress progress) {
                     // 下载进度百分比
                     int percentage = (int) Math.round(progress.out_time_ns / duration_ns * 100);
-                    WebSocketServer.sendProgress(taskId, percentage);
+//                    WebSocketServer.sendProgress(taskId, percentage);
+                    log.info("视频下载进度: {}", percentage);
                 }
             });
 
