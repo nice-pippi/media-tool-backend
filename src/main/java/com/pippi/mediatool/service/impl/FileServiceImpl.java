@@ -34,5 +34,9 @@ public class FileServiceImpl implements FileService {
 
         // 输出到httpServletResponse
         FileUtil.outputFile(filePath, httpServletResponse);
+
+        // 下载完成后删除任务和文件
+        taskManager.removeTask(taskId);
+        FileUtil.deleteFile(filePath);
     }
 }
