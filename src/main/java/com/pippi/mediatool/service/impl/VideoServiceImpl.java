@@ -4,10 +4,10 @@ import com.pippi.mediatool.application.exception.BusinessException;
 import com.pippi.mediatool.common.DownloadTask;
 import com.pippi.mediatool.common.constants.FilePathConstant;
 import com.pippi.mediatool.common.enums.FileTypeEnum;
+import com.pippi.mediatool.common.manager.TaskManager;
 import com.pippi.mediatool.common.utils.FileUtil;
 import com.pippi.mediatool.mvc.co.TaskCO;
 import com.pippi.mediatool.service.VideoService;
-import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import net.bramp.ffmpeg.FFmpeg;
 import net.bramp.ffmpeg.FFmpegExecutor;
@@ -18,17 +18,11 @@ import net.bramp.ffmpeg.probe.FFmpegProbeResult;
 import net.bramp.ffmpeg.progress.Progress;
 import net.bramp.ffmpeg.progress.ProgressListener;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
-import java.time.LocalDateTime;
-import java.time.temporal.ChronoUnit;
-import java.util.Iterator;
-import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -47,8 +41,8 @@ public class VideoServiceImpl implements VideoService {
     @Autowired
     private FFprobe ffprobe;
 
-    // taskId -> DownloadTask
-    private static final ConcurrentHashMap<String, DownloadTask> TASK_MAP = new ConcurrentHashMap<>();
+    @Autowired
+    private TaskManager taskManager;
 
     @Override
     public void createDownloadTask(TaskCO co) {
@@ -62,7 +56,7 @@ public class VideoServiceImpl implements VideoService {
         // 创建任务对象
         String taskId = co.getTaskId();
         DownloadTask task = DownloadTask.of(taskId, FileTypeEnum.VIDEO, fileName);
-        TASK_MAP.put(taskId, task);
+        taskManager.addTask(taskId, task);
 
         try {
             // 获取视频源信息
@@ -89,7 +83,7 @@ public class VideoServiceImpl implements VideoService {
                     // 下载进度百分比
                     double percentage = (progress.out_time_ns / duration_ns) * 100;
                     String percentageStr = String.format("%.2f", percentage);
-                    TASK_MAP.get(taskId).setProgress(percentage);
+                    taskManager.updateProgress(taskId, percentage);
 //                    WebSocketServer.sendProgress(taskId, percentageStr);
                     log.info("视频下载进度: {}%", percentageStr);
                 }
@@ -120,60 +114,6 @@ public class VideoServiceImpl implements VideoService {
 
             log.error("下载视频异常：{}", e.getMessage());
             throw BusinessException.of("下载视频异常");
-        }
-    }
-
-    @Override
-    public void download(String taskId, HttpServletResponse httpServletResponse) {
-        DownloadTask downloadTask = TASK_MAP.get(taskId);
-        if (!downloadTask.isCompleted()) {
-            throw BusinessException.of("任务未完成");
-        }
-
-        String filePath = downloadTask.getFilePath();
-
-        // 输出到httpServletResponse
-        FileUtil.outputFile(filePath, httpServletResponse);
-    }
-
-    /**
-     * 每小时清理一次过期任务
-     */
-    @Scheduled(cron = "0 0 * * * ?")  // 每小时执行一次
-    public void cleanupExpiredTasks() {
-        log.info("开始清理过期任务");
-
-        LocalDateTime now = LocalDateTime.now();
-        int cleanCount = 0;
-
-        Iterator<Map.Entry<String, DownloadTask>> iterator = TASK_MAP.entrySet().iterator();
-        while (iterator.hasNext()) {
-            Map.Entry<String, DownloadTask> entry = iterator.next();
-            DownloadTask task = entry.getValue();
-
-            if (task == null) continue;
-
-            // 只清理已完成的任务
-            if (!task.isCompleted()) continue;
-
-            // 任务创建超过1小时就清理
-            if (task.getCreateTime() != null) {
-                long hours = ChronoUnit.HOURS.between(task.getCreateTime(), now);
-                if (hours >= 1) {
-                    String taskId = entry.getKey();
-                    // 删除下载的文件
-                    FileUtil.deleteFile(task.getFilePath());
-
-                    // 从内存中移除任务
-                    iterator.remove();
-                    cleanCount++;
-                    log.info("清理过期任务: {}, 创建时间: {}", taskId, task.getCreateTime());
-                }
-            }
-        }
-
-        if (cleanCount > 0) {
-            log.info("清理完成，共清理 {} 个过期任务", cleanCount);
         }
     }
 

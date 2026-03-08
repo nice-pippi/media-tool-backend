@@ -1,7 +1,6 @@
 package com.pippi.mediatool.service;
 
 import com.pippi.mediatool.mvc.co.TaskCO;
-import jakarta.servlet.http.HttpServletResponse;
 
 /**
  * @Author: hong
@@ -17,12 +16,4 @@ public interface VideoService {
      * @param co 任务参数
      */
     void createDownloadTask(TaskCO co);
-
-    /**
-     * 下载文件
-     *
-     * @param taskId              任务ID
-     * @param httpServletResponse 响应
-     */
-    void download(String taskId, HttpServletResponse httpServletResponse);
 }
