@@ -58,6 +58,19 @@ public class WebSocketServer {
     @OnMessage
     public void onMessage(String message, @PathParam("taskId") String taskId) {
         log.info("收到消息，任务ID: {}，消息: {}", taskId, message);
+
+        // 处理心跳消息
+        if ("ping".equals(message)) {
+            // 响应pong，保持连接活跃
+            Session session = sessionMap.get(taskId);
+            if (session != null && session.isOpen()) {
+                try {
+                    session.getBasicRemote().sendText("pong");
+                } catch (IOException e) {
+                    log.error("发送pong失败", e);
+                }
+            }
+        }
         // 可根据业务需求处理客户端消息，如暂停、取消下载等
     }
 
@@ -68,8 +81,17 @@ public class WebSocketServer {
      * @param error   错误信息
      */
     @OnError
-    public void onError(Session session, Throwable error) {
-        log.error("WebSocket错误", error);
+    public void onError(Session session, Throwable error, @PathParam("taskId") String taskId) {
+        log.error("WebSocket错误，任务ID: {}", taskId, error);
+        // 发生错误时也清理会话
+        sessionMap.remove(taskId);
+        try {
+            if (session.isOpen()) {
+                session.close();
+            }
+        } catch (IOException e) {
+            log.error("关闭错误会话失败", e);
+        }
     }
 
     /**
