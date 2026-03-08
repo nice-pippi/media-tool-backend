@@ -28,8 +28,10 @@ public class DownloadTask {
 
     private LocalDateTime createTime;
 
+    private Double progress;
+
     public static DownloadTask of(String taskId, FileTypeEnum fileType, String filePath) {
-        return new DownloadTask(taskId, false, fileType, filePath, LocalDateTime.now());
+        return new DownloadTask(taskId, false, fileType, filePath, LocalDateTime.now(), 0.00);
     }
 
 }

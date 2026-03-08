@@ -89,6 +89,7 @@ public class VideoServiceImpl implements VideoService {
                     // 下载进度百分比
                     double percentage = (progress.out_time_ns / duration_ns) * 100;
                     String percentageStr = String.format("%.2f", percentage);
+                    TASK_MAP.get(taskId).setProgress(percentage);
 //                    WebSocketServer.sendProgress(taskId, percentageStr);
                     log.info("视频下载进度: {}%", percentageStr);
                 }
@@ -99,6 +100,12 @@ public class VideoServiceImpl implements VideoService {
                 try {
                     job.run();
                     task.setCompleted(true);
+                    // 考虑到下载视频完成后，进度不一定是100%，这里再设置一次
+                    if (!task.getProgress().equals(100.00)) {
+                        task.setProgress(100.00);
+//                        WebSocketServer.sendProgress(taskId, "100");
+                        log.info("视频下载进度: 100%");
+                    }
                     log.info("视频下载完成，任务id：{}", taskId);
                 } catch (Exception e) {
                     // 删除文件
