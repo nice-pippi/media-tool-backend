@@ -15,7 +15,7 @@ public class R<T> implements Serializable {
 
     private Integer code;
 
-    private String msg; //错误信息
+    private String message; //错误信息
 
     private T data; //数据
 
@@ -23,7 +23,7 @@ public class R<T> implements Serializable {
         R<T> r = new R<T>();
         r.code = 200;
         r.data = object;
-        r.msg = "操作成功";
+        r.message = "操作成功";
         return r;
     }
 
@@ -31,14 +31,14 @@ public class R<T> implements Serializable {
         R<T> r = new R<>();
         r.code = 200;
         r.data = null;
-        r.msg = "操作成功";
+        r.message = "操作成功";
         return r;
     }
 
     public static <T> R<T> error(String msg) {
         R<T> r = new R<>();
         r.code = 500;
-        r.msg = msg;
+        r.message = msg;
         return r;
     }
 }
