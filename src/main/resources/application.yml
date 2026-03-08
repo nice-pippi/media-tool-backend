@@ -5,6 +5,7 @@ spring:
 server:
   servlet:
     context-path: /${spring.application.name}
+  port: 8888
 
 ffmpeg:
   path: ${FFMPEG_HOME:/usr/local/bin}
