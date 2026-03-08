@@ -25,7 +25,7 @@ public class VideoController {
         return R.success();
     }
 
-    @GetMapping("download")
+    @GetMapping("/download")
     public void download(@RequestParam String taskId, HttpServletResponse httpServletResponse) {
         videoService.download(taskId, httpServletResponse);
     }
