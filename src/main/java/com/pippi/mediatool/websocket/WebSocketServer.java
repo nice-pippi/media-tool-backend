@@ -17,7 +17,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * @Version: 1.0
  */
 @Slf4j
-@ServerEndpoint("/ws/media-tool/{taskId}")
+@ServerEndpoint("/ws/{taskId}")
 @Component
 public class WebSocketServer {
 
