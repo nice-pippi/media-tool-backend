@@ -8,6 +8,7 @@ import com.pippi.mediatool.common.manager.TaskManager;
 import com.pippi.mediatool.common.utils.FileUtil;
 import com.pippi.mediatool.mvc.co.TaskCO;
 import com.pippi.mediatool.service.VideoService;
+import com.pippi.mediatool.websocket.WebSocketServer;
 import lombok.extern.slf4j.Slf4j;
 import net.bramp.ffmpeg.FFmpeg;
 import net.bramp.ffmpeg.FFmpegExecutor;
@@ -84,7 +85,7 @@ public class VideoServiceImpl implements VideoService {
                     double percentage = (progress.out_time_ns / duration_ns) * 100;
                     String percentageStr = String.format("%.2f", percentage);
                     taskManager.updateProgress(taskId, percentage);
-//                    WebSocketServer.sendProgress(taskId, percentageStr);
+                    WebSocketServer.sendProgress(taskId, percentageStr);
                     log.info("视频下载进度: {}%", percentageStr);
                 }
             });
@@ -97,7 +98,7 @@ public class VideoServiceImpl implements VideoService {
                     // 考虑到下载视频完成后，进度不一定是100%，这里再设置一次
                     if (!task.getProgress().equals(100.00)) {
                         task.setProgress(100.00);
-//                        WebSocketServer.sendProgress(taskId, "100");
+                        WebSocketServer.sendProgress(taskId, "100");
                         log.info("视频下载进度: 100%");
                     }
                     log.info("视频下载完成，任务id：{}", taskId);
