@@ -16,4 +16,12 @@ public interface VideoService {
      * @param co 任务参数
      */
     void createDownloadTask(TaskCO co);
+
+    /**
+     * 简单下载
+     *
+     * @param url 视频地址
+     * @return 下载后的文件路径
+     */
+    String simpleDownload(String url);
 }

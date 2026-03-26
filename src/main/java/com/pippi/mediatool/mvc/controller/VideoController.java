@@ -4,10 +4,7 @@ import com.pippi.mediatool.common.R;
 import com.pippi.mediatool.mvc.co.TaskCO;
 import com.pippi.mediatool.service.VideoService;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 /**
  * @Author: hong
@@ -27,4 +24,8 @@ public class VideoController {
         return R.success();
     }
 
+    @GetMapping("/simple-download")
+    public R<String> simpleDownload(@RequestParam String url) {
+        return R.success(videoService.simpleDownload(url));
+    }
 }
