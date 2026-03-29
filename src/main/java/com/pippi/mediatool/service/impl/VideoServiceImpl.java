@@ -143,12 +143,10 @@ public class VideoServiceImpl implements VideoService {
 
             // 创建下载任务并设置进度监听器
             FFmpegJob job = executor.createJob(builder, new ProgressListener() {
-                // 获取视频总时长（纳秒）
                 final double duration_ns = in.getFormat().duration * TimeUnit.SECONDS.toNanos(1);
 
                 @Override
                 public void progress(Progress progress) {
-                    // 下载进度百分比
                     double percentage = (progress.out_time_ns / duration_ns) * 100;
                     String percentageStr = String.format("%.2f", percentage);
                     log.info("视频下载进度: {}%", percentageStr);
@@ -159,29 +157,24 @@ public class VideoServiceImpl implements VideoService {
             CompletableFuture.runAsync(() -> {
                 try {
                     job.run();
-                    // 考虑到下载视频完成后，进度不一定是100%，这里再设置一次
                     log.info("视频下载进度: 100%");
-                    log.info("视频下载完成");
+                    log.info("视频下载完成，文件保存在：{}", fileName);
                 } catch (Exception e) {
-                    // 删除文件
                     FileUtil.deleteFile(fileName);
-
                     log.error("下载视频异常：{}", e.getMessage());
                 }
             });
+            return transferWinPath(fileName);
         } catch (IOException e) {
-            // 删除文件
             FileUtil.deleteFile(fileName);
-
             log.error("下载视频异常：{}", e.getMessage());
             throw BusinessException.of("下载视频异常");
         }
-
-        return transferWinPath(fileName);
     }
 
     @Override
     public String compress(String filePath) {
+        // 输出文件路径
         FileUtil.makeDir(FilePathConstant.VIDEO_TEMP_PATH);
         String outputFilePath = FilePathConstant.VIDEO_TEMP_PATH + UUID.randomUUID() + ".mp4";
 
@@ -190,14 +183,13 @@ public class VideoServiceImpl implements VideoService {
             FFmpegProbeResult in = ffprobe.probe(filePath);
 
             // 构建FFmpeg命令参数
-            // ffmpeg -i input.mp4 -c:v libx265 -crf 23 -preset fast -x265-params "aq-mode=3" -c:a aac -b:a 128k output.mp4
+            // ffmpeg -i input.mp4 -c:v libx264 -crf 23 -preset fast -c:a aac -b:a 128k output.mp4
             FFmpegBuilder builder = new FFmpegBuilder()
                     .setInput(filePath)
                     .addOutput(outputFilePath)
-                    .setVideoCodec("libx265")
+                    .setVideoCodec("libx264")
                     .addExtraArgs("-crf", "23")
                     .addExtraArgs("-preset", "fast")
-                    .addExtraArgs("-x265-params", "aq-mode=3")
                     .setAudioCodec("aac")
                     .setAudioBitRate(128000)
                     .setStrict(FFmpegBuilder.Strict.EXPERIMENTAL)
@@ -231,15 +223,12 @@ public class VideoServiceImpl implements VideoService {
                     log.error("视频压缩异常：{}", e.getMessage());
                 }
             });
-
+            return transferWinPath(outputFilePath);
         } catch (IOException e) {
             FileUtil.deleteFile(outputFilePath);
             log.error("视频压缩异常：{}", e.getMessage());
             throw BusinessException.of("视频压缩异常");
         }
-
-        // 直接返回输出文件路径
-        return transferWinPath(outputFilePath);
     }
 
     /*
