@@ -19,4 +19,6 @@ public class TaskCO {
 
     private String url;
 
+    private Boolean needCompress;
+
 }

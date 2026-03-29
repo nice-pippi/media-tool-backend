@@ -47,128 +47,127 @@ public class VideoServiceImpl implements VideoService {
 
     @Override
     public void createDownloadTask(TaskCO co) {
-        // 视频地址
         String url = co.getUrl();
+        Boolean needCompress = co.getNeedCompress();
 
         // 输出文件路径
         FileUtil.makeDir(FilePathConstant.VIDEO_TEMP_PATH);
-        String fileName = FilePathConstant.VIDEO_TEMP_PATH + UUID.randomUUID() + ".mp4";
+        String outputFilePath = FilePathConstant.VIDEO_TEMP_PATH + UUID.randomUUID() + ".mp4";
 
         // 创建任务对象
         String taskId = co.getTaskId();
-        DownloadTask task = DownloadTask.of(taskId, FileTypeEnum.VIDEO, fileName);
+        DownloadTask task = DownloadTask.of(taskId, FileTypeEnum.VIDEO, outputFilePath);
         taskManager.addTask(taskId, task);
 
         try {
             // 获取视频源信息
             FFmpegProbeResult in = ffprobe.probe(url);
 
-            // 构建FFmpeg命令参数
-            // ffmpeg -i url -c copy output.mp4
-            FFmpegBuilder builder = new FFmpegBuilder()
-                    .setInput(url)
-                    .addOutput(fileName)
-                    .setAudioCodec("copy")
-                    .setVideoCodec("copy")
-                    .done();
+            // 根据 needCompress 选择构建不同的 builder
+            FFmpegBuilder builder;
+            if (needCompress != null && needCompress) {
+                builder = buildCompressBuilder(url, outputFilePath);
+            } else {
+                builder = buildCopyBuilder(url, outputFilePath);
+            }
 
             // 创建FFmpeg执行器
             FFmpegExecutor executor = new FFmpegExecutor(ffmpeg, ffprobe);
 
-            // 创建下载任务并设置进度监听器
+            // 创建任务并设置进度监听器
             FFmpegJob job = executor.createJob(builder, new ProgressListener() {
-                // 获取视频总时长（纳秒）
                 final double duration_ns = in.getFormat().duration * TimeUnit.SECONDS.toNanos(1);
 
                 @Override
                 public void progress(Progress progress) {
-                    // 下载进度百分比
-                    double percentage = (progress.out_time_ns / duration_ns) * 100;
-                    String percentageStr = String.format("%.2f", percentage);
-                    taskManager.updateProgress(taskId, percentage);
-                    WebSocketServer.sendProgress(taskId, percentageStr);
-                    log.info("任务id：{}，视频下载进度: {}%", taskId, percentageStr);
+                    if (progress.out_time_ns >= 0 && duration_ns > 0) {
+                        double percentage = (progress.out_time_ns / duration_ns) * 100;
+                        percentage = Math.min(percentage, 100);
+                        String percentageStr = String.format("%.2f", percentage);
+                        taskManager.updateProgress(taskId, percentage);
+                        WebSocketServer.sendProgress(taskId, percentageStr);
+                        log.info("任务id：{}，处理进度: {}%", taskId, percentageStr);
+                    }
                 }
             });
 
-            // 异步执行下载任务
+            // 异步执行
             CompletableFuture.runAsync(() -> {
                 try {
                     job.run();
                     task.setCompleted(true);
-                    // 考虑到下载视频完成后，进度不一定是100%，这里再设置一次
                     if (!task.getProgress().equals(100.00)) {
                         task.setProgress(100.00);
                         WebSocketServer.sendProgress(taskId, "100");
-                        log.info("任务id：{}，视频下载进度: 100%", taskId);
+                        log.info("任务id：{}，处理进度: 100%", taskId);
                     }
-                    log.info("视频下载完成，任务id：{}", taskId);
+                    log.info("任务id：{}，处理完成", taskId);
                 } catch (Exception e) {
-                    // 删除文件
-                    FileUtil.deleteFile(fileName);
-
-                    log.error("下载视频异常：{}", e.getMessage());
+                    FileUtil.deleteFile(outputFilePath);
+                    log.error("任务id：{}，处理异常：{}", taskId, e.getMessage());
                 }
             });
-        } catch (IOException e) {
-            // 删除文件
-            FileUtil.deleteFile(fileName);
 
-            log.error("下载视频异常：{}", e.getMessage());
-            throw BusinessException.of("下载视频异常");
+        } catch (IOException e) {
+            FileUtil.deleteFile(outputFilePath);
+            log.error("处理异常：{}", e.getMessage());
+            throw BusinessException.of("处理异常");
         }
     }
 
     @Override
-    public String simpleDownload(String url) {
+    public String simpleDownload(String url, Boolean needCompress) {
         // 输出文件路径
         FileUtil.makeDir(FilePathConstant.VIDEO_TEMP_PATH);
-        String fileName = FilePathConstant.VIDEO_TEMP_PATH + UUID.randomUUID() + ".mp4";
+        String outputFilePath = FilePathConstant.VIDEO_TEMP_PATH + UUID.randomUUID() + ".mp4";
 
         try {
             // 获取视频源信息
             FFmpegProbeResult in = ffprobe.probe(url);
 
-            // 构建FFmpeg命令参数
-            // ffmpeg -i url -c copy output.mp4
-            FFmpegBuilder builder = new FFmpegBuilder()
-                    .setInput(url)
-                    .addOutput(fileName)
-                    .setAudioCodec("copy")
-                    .setVideoCodec("copy")
-                    .done();
+            // 根据 needCompress 选择构建不同的 builder
+            FFmpegBuilder builder;
+            if (needCompress != null && needCompress) {
+                builder = buildCompressBuilder(url, outputFilePath);
+            } else {
+                builder = buildCopyBuilder(url, outputFilePath);
+            }
 
             // 创建FFmpeg执行器
             FFmpegExecutor executor = new FFmpegExecutor(ffmpeg, ffprobe);
 
-            // 创建下载任务并设置进度监听器
+            // 创建任务并设置进度监听器
             FFmpegJob job = executor.createJob(builder, new ProgressListener() {
                 final double duration_ns = in.getFormat().duration * TimeUnit.SECONDS.toNanos(1);
 
                 @Override
                 public void progress(Progress progress) {
-                    double percentage = (progress.out_time_ns / duration_ns) * 100;
-                    String percentageStr = String.format("%.2f", percentage);
-                    log.info("视频下载进度: {}%", percentageStr);
+                    if (progress.out_time_ns >= 0 && duration_ns > 0) {
+                        double percentage = (progress.out_time_ns / duration_ns) * 100;
+                        percentage = Math.min(percentage, 100);
+                        String percentageStr = String.format("%.2f", percentage);
+                        log.info("处理进度: {}%", percentageStr);
+                    }
                 }
             });
 
-            // 异步执行下载任务
+            // 异步执行
             CompletableFuture.runAsync(() -> {
                 try {
                     job.run();
-                    log.info("视频下载进度: 100%");
-                    log.info("视频下载完成，文件保存在：{}", fileName);
+                    log.info("处理完成，文件保存在：{}", outputFilePath);
                 } catch (Exception e) {
-                    FileUtil.deleteFile(fileName);
-                    log.error("下载视频异常：{}", e.getMessage());
+                    FileUtil.deleteFile(outputFilePath);
+                    log.error("处理异常：{}", e.getMessage());
                 }
             });
-            return transferWinPath(fileName);
+
+            return transferWinPath(outputFilePath);
+
         } catch (IOException e) {
-            FileUtil.deleteFile(fileName);
-            log.error("下载视频异常：{}", e.getMessage());
-            throw BusinessException.of("下载视频异常");
+            FileUtil.deleteFile(outputFilePath);
+            log.error("处理异常：{}", e.getMessage());
+            throw BusinessException.of("处理异常");
         }
     }
 
@@ -229,6 +228,46 @@ public class VideoServiceImpl implements VideoService {
             log.error("视频压缩异常：{}", e.getMessage());
             throw BusinessException.of("视频压缩异常");
         }
+    }
+
+    /**
+     * 构建直接复制流的 builder（不压缩）
+     *
+     * @param url            视频URL
+     * @param outputFilePath 输出文件路径
+     * @return FFmpegBuilder对象
+     */
+    private FFmpegBuilder buildCopyBuilder(String url, String outputFilePath) {
+        // ffmpeg -i url -c copy output.mp4
+        return new FFmpegBuilder()
+                .setInput(url)
+                .addOutput(outputFilePath)
+                .setAudioCodec("copy")
+                .setVideoCodec("copy")
+                .setStrict(FFmpegBuilder.Strict.EXPERIMENTAL)
+                .done();
+    }
+
+    /**
+     * 构建压缩的 builder（H.265 压缩）
+     *
+     * @param url            视频URL
+     * @param outputFilePath 输出文件路径
+     * @return FFmpegBuilder对象
+     */
+    private FFmpegBuilder buildCompressBuilder(String url, String outputFilePath) {
+        // ffmpeg -i url -c:v libx265 -crf 23 -preset faster -x265-params aq-mode=3 -c:a aac -b:a 128k output.mp4
+        return new FFmpegBuilder()
+                .setInput(url)
+                .addOutput(outputFilePath)
+                .setVideoCodec("libx265")
+                .addExtraArgs("-crf", "23")
+                .addExtraArgs("-preset", "faster")
+                .addExtraArgs("-x265-params", "aq-mode=3")
+                .setAudioCodec("aac")
+                .setAudioBitRate(128000)
+                .setStrict(FFmpegBuilder.Strict.EXPERIMENTAL)
+                .done();
     }
 
     /*
