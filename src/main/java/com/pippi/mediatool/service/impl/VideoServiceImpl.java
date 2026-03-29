@@ -192,14 +192,14 @@ public class VideoServiceImpl implements VideoService {
             // 构建FFmpeg命令参数
             // ffmpeg -i input.mp4 -c:v libx265 -crf 23 -preset fast -x265-params "aq-mode=3" -c:a aac -b:a 128k output.mp4
             FFmpegBuilder builder = new FFmpegBuilder()
-                    .setInput(filePath)                         // 输入文件
-                    .addOutput(outputFilePath)                  // 输出文件
-                    .setVideoCodec("libx265")                   // 视频编码器 H.265
-                    .addExtraArgs("-crf", "23")                 // CRF质量因子
-                    .addExtraArgs("-preset", "fast")            // 编码速度预设
-                    .addExtraArgs("-x265-params", "aq-mode=3")  // x265参数
-                    .setAudioCodec("aac")                       // 音频编码器
-                    .setAudioBitRate(128000)                    // 音频比特率 128kbps
+                    .setInput(filePath)
+                    .addOutput(outputFilePath)
+                    .setVideoCodec("libx265")
+                    .addExtraArgs("-crf", "23")
+                    .addExtraArgs("-preset", "fast")
+                    .addExtraArgs("-x265-params", "aq-mode=3")
+                    .setAudioCodec("aac")
+                    .setAudioBitRate(128000)
                     .setStrict(FFmpegBuilder.Strict.EXPERIMENTAL)
                     .done();
 
