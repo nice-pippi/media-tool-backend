@@ -24,4 +24,12 @@ public interface VideoService {
      * @return 下载后的文件路径
      */
     String simpleDownload(String url);
+
+    /**
+     * 压缩视频
+     *
+     * @param filePath 视频文件路径
+     * @return 压缩后的文件路径
+     */
+    String compress(String filePath);
 }

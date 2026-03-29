@@ -64,6 +64,7 @@ public class VideoServiceImpl implements VideoService {
             FFmpegProbeResult in = ffprobe.probe(url);
 
             // 构建FFmpeg命令参数
+            // ffmpeg -i url -c copy output.mp4
             FFmpegBuilder builder = new FFmpegBuilder()
                     .setInput(url)
                     .addOutput(fileName)
@@ -129,6 +130,7 @@ public class VideoServiceImpl implements VideoService {
             FFmpegProbeResult in = ffprobe.probe(url);
 
             // 构建FFmpeg命令参数
+            // ffmpeg -i url -c copy output.mp4
             FFmpegBuilder builder = new FFmpegBuilder()
                     .setInput(url)
                     .addOutput(fileName)
@@ -175,7 +177,76 @@ public class VideoServiceImpl implements VideoService {
             throw BusinessException.of("下载视频异常");
         }
 
-        return fileName;
+        return transferWinPath(fileName);
+    }
+
+    @Override
+    public String compress(String filePath) {
+        FileUtil.makeDir(FilePathConstant.VIDEO_TEMP_PATH);
+        String outputFilePath = FilePathConstant.VIDEO_TEMP_PATH + UUID.randomUUID() + ".mp4";
+
+        try {
+            // 获取视频源信息
+            FFmpegProbeResult in = ffprobe.probe(filePath);
+
+            // 构建FFmpeg命令参数
+            // ffmpeg -i input.mp4 -c:v libx265 -crf 23 -preset fast -x265-params "aq-mode=3" -c:a aac -b:a 128k output.mp4
+            FFmpegBuilder builder = new FFmpegBuilder()
+                    .setInput(filePath)                         // 输入文件
+                    .addOutput(outputFilePath)                  // 输出文件
+                    .setVideoCodec("libx265")                   // 视频编码器 H.265
+                    .addExtraArgs("-crf", "23")                 // CRF质量因子
+                    .addExtraArgs("-preset", "fast")            // 编码速度预设
+                    .addExtraArgs("-x265-params", "aq-mode=3")  // x265参数
+                    .setAudioCodec("aac")                       // 音频编码器
+                    .setAudioBitRate(128000)                    // 音频比特率 128kbps
+                    .setStrict(FFmpegBuilder.Strict.EXPERIMENTAL)
+                    .done();
+
+            // 创建FFmpeg执行器
+            FFmpegExecutor executor = new FFmpegExecutor(ffmpeg, ffprobe);
+
+            // 创建压缩任务并设置进度监听器
+            FFmpegJob job = executor.createJob(builder, new ProgressListener() {
+                final double duration_ns = in.getFormat().duration * TimeUnit.SECONDS.toNanos(1);
+
+                @Override
+                public void progress(Progress progress) {
+                    if (progress.out_time_ns >= 0 && duration_ns > 0) {
+                        double percentage = (progress.out_time_ns / duration_ns) * 100;
+                        percentage = Math.min(percentage, 100);
+                        String percentageStr = String.format("%.2f", percentage);
+                        log.info("视频压缩进度: {}%", percentageStr);
+                    }
+                }
+            });
+
+            // 异步执行压缩任务
+            CompletableFuture.runAsync(() -> {
+                try {
+                    job.run();
+                    log.info("视频压缩完成，输入文件：{}，输出文件：{}", filePath, outputFilePath);
+                } catch (Exception e) {
+                    FileUtil.deleteFile(outputFilePath);
+                    log.error("视频压缩异常：{}", e.getMessage());
+                }
+            });
+
+        } catch (IOException e) {
+            FileUtil.deleteFile(outputFilePath);
+            log.error("视频压缩异常：{}", e.getMessage());
+            throw BusinessException.of("视频压缩异常");
+        }
+
+        // 直接返回输出文件路径
+        return transferWinPath(outputFilePath);
+    }
+
+    /*
+     * 转换文件路径为Windows格式
+     */
+    private String transferWinPath(String fileName) {
+        return fileName.replace("\\", "/");
     }
 
 }
