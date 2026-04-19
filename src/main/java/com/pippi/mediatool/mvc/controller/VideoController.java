@@ -26,8 +26,8 @@ public class VideoController {
 
     @GetMapping("/simple-download")
     public R<String> simpleDownload(@RequestParam("url") String url,
-                                    @RequestParam(value = "needCompress", required = false) Boolean needCompress) {
-        return R.success(videoService.simpleDownload(url, needCompress));
+                                    @RequestParam(value = "compress", required = false) Boolean compress) {
+        return R.success(videoService.simpleDownload(url, compress));
     }
 
     @GetMapping("/compress")

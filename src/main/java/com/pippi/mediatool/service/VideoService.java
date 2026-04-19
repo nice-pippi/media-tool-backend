@@ -21,10 +21,10 @@ public interface VideoService {
      * 简单下载
      *
      * @param url          视频地址
-     * @param needCompress 是否需要压缩
+     * @param compress 是否需要压缩
      * @return 下载后的文件路径
      */
-    String simpleDownload(String url, Boolean needCompress);
+    String simpleDownload(String url, Boolean compress);
 
     /**
      * 压缩视频

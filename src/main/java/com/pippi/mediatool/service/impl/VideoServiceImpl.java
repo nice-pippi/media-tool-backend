@@ -116,7 +116,7 @@ public class VideoServiceImpl implements VideoService {
     }
 
     @Override
-    public String simpleDownload(String url, Boolean needCompress) {
+    public String simpleDownload(String url, Boolean compress) {
         // 输出文件路径
         FileUtil.makeDir(FilePathConstant.VIDEO_TEMP_PATH);
         String outputFilePath = FilePathConstant.VIDEO_TEMP_PATH + UUID.randomUUID() + ".mp4";
@@ -125,9 +125,9 @@ public class VideoServiceImpl implements VideoService {
             // 获取视频源信息
             FFmpegProbeResult in = ffprobe.probe(url);
 
-            // 根据 needCompress 选择构建不同的 builder
+            // 根据 compress 选择构建不同的 builder
             FFmpegBuilder builder;
-            if (needCompress != null && needCompress) {
+            if (compress != null && compress) {
                 builder = buildCompressBuilder(url, outputFilePath);
             } else {
                 builder = buildCopyBuilder(url, outputFilePath);
