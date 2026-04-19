@@ -182,17 +182,7 @@ public class VideoServiceImpl implements VideoService {
             FFmpegProbeResult in = ffprobe.probe(filePath);
 
             // 构建FFmpeg命令参数
-            // ffmpeg -i input.mp4 -c:v libx264 -crf 23 -preset fast -c:a aac -b:a 128k output.mp4
-            FFmpegBuilder builder = new FFmpegBuilder()
-                    .setInput(filePath)
-                    .addOutput(outputFilePath)
-                    .setVideoCodec("libx264")
-                    .addExtraArgs("-crf", "23")
-                    .addExtraArgs("-preset", "fast")
-                    .setAudioCodec("aac")
-                    .setAudioBitRate(128000)
-                    .setStrict(FFmpegBuilder.Strict.EXPERIMENTAL)
-                    .done();
+            FFmpegBuilder builder = buildCompressBuilder(filePath, outputFilePath);
 
             // 创建FFmpeg执行器
             FFmpegExecutor executor = new FFmpegExecutor(ffmpeg, ffprobe);
@@ -251,21 +241,19 @@ public class VideoServiceImpl implements VideoService {
     /**
      * 构建压缩的 builder（H.265 压缩）
      *
-     * @param url            视频URL
+     * @param inputFile      输入文件路径
      * @param outputFilePath 输出文件路径
      * @return FFmpegBuilder对象
      */
-    private FFmpegBuilder buildCompressBuilder(String url, String outputFilePath) {
-        // ffmpeg -i url -c:v libx265 -crf 23 -preset faster -c:a aac -b:a 128k output.mp4
+    private FFmpegBuilder buildCompressBuilder(String inputFile, String outputFilePath) {
+        // ffmpeg -i url -c:v hevc_nvenc -cq 23 -preset slow -c:a copy output.mp4
         return new FFmpegBuilder()
-                .setInput(url)
+                .setInput(inputFile)
                 .addOutput(outputFilePath)
-                .setVideoCodec("libx265")
-                .addExtraArgs("-crf", "23")
-                .addExtraArgs("-preset", "faster")
-                .setAudioCodec("aac")
-                .setAudioBitRate(128000)
-                .setStrict(FFmpegBuilder.Strict.EXPERIMENTAL)
+                .setVideoCodec("hevc_nvenc")
+                .addExtraArgs("-cq", "23")
+                .addExtraArgs("-preset", "slow")
+                .setAudioCodec("copy")
                 .done();
     }
 
