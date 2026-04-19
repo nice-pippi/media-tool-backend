@@ -256,14 +256,13 @@ public class VideoServiceImpl implements VideoService {
      * @return FFmpegBuilder对象
      */
     private FFmpegBuilder buildCompressBuilder(String url, String outputFilePath) {
-        // ffmpeg -i url -c:v libx265 -crf 23 -preset faster -x265-params aq-mode=3 -c:a aac -b:a 128k output.mp4
+        // ffmpeg -i url -c:v libx265 -crf 23 -preset faster -c:a aac -b:a 128k output.mp4
         return new FFmpegBuilder()
                 .setInput(url)
                 .addOutput(outputFilePath)
                 .setVideoCodec("libx265")
                 .addExtraArgs("-crf", "23")
                 .addExtraArgs("-preset", "faster")
-                .addExtraArgs("-x265-params", "aq-mode=3")
                 .setAudioCodec("aac")
                 .setAudioBitRate(128000)
                 .setStrict(FFmpegBuilder.Strict.EXPERIMENTAL)
