@@ -1,6 +1,7 @@
 package com.pippi.mediatool.mvc.controller;
 
 import com.pippi.mediatool.common.R;
+import com.pippi.mediatool.mvc.co.BatchCompressCO;
 import com.pippi.mediatool.mvc.co.TaskCO;
 import com.pippi.mediatool.service.VideoService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,8 +39,8 @@ public class VideoController {
     }
 
     @PostMapping("/batch-compress")
-    public R<Void> batchCompress(@RequestBody List<String> filePaths) {
-        videoService.batchCompress(filePaths);
+    public R<Void> batchCompress(@RequestBody BatchCompressCO co) {
+        videoService.batchCompress(co);
         return R.success();
     }
 }

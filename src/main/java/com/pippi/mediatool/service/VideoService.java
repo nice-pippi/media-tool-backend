@@ -1,5 +1,6 @@
 package com.pippi.mediatool.service;
 
+import com.pippi.mediatool.mvc.co.BatchCompressCO;
 import com.pippi.mediatool.mvc.co.TaskCO;
 
 import java.util.List;
@@ -39,7 +40,7 @@ public interface VideoService {
     /**
      * 批量压缩视频文件（按顺序处理）
      *
-     * @param filePaths 视频文件路径列表
+     * @param co 批量压缩参数
      */
-    void batchCompress(List<String> filePaths);
+    void batchCompress(BatchCompressCO co);
 }

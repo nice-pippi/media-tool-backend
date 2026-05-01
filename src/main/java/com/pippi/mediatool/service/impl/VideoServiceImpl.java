@@ -6,6 +6,7 @@ import com.pippi.mediatool.common.constants.FilePathConstant;
 import com.pippi.mediatool.common.enums.FileTypeEnum;
 import com.pippi.mediatool.common.manager.TaskManager;
 import com.pippi.mediatool.common.utils.FileUtil;
+import com.pippi.mediatool.mvc.co.BatchCompressCO;
 import com.pippi.mediatool.mvc.co.TaskCO;
 import com.pippi.mediatool.service.VideoService;
 import com.pippi.mediatool.websocket.WebSocketServer;
@@ -223,7 +224,10 @@ public class VideoServiceImpl implements VideoService {
     }
 
     @Override
-    public void batchCompress(List<String> filePaths) {
+    public void batchCompress(BatchCompressCO co) {
+        List<String> filePaths = co.getFilePaths();
+        Boolean deleteSource = co.getDeleteSource();
+
         if (filePaths == null || filePaths.isEmpty()) {
             throw BusinessException.of("文件路径列表不能为空");
         }
@@ -265,6 +269,12 @@ public class VideoServiceImpl implements VideoService {
                 // 同步执行压缩任务（阻塞等待完成）
                 job.run();
                 log.info("视频压缩完成，输入文件：{}，输出文件：{}", filePath, outputFilePath);
+
+                // 如果设置了删除源文件，则删除原始文件
+                if (deleteSource != null && deleteSource) {
+                    FileUtil.deleteFile(filePath);
+                    log.info("已删除源文件：{}", filePath);
+                }
             } catch (Exception e) {
                 if (outputFilePath != null) {
                     FileUtil.deleteFile(outputFilePath);
