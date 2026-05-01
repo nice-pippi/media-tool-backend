@@ -332,7 +332,7 @@ public class VideoServiceImpl implements VideoService {
                 .setVideoCodec("libx265")
                 .addExtraArgs("-crf", "23")
                 .addExtraArgs("-preset", "fast")
-                .addExtraArgs("-threads", "0")
+                .addExtraArgs("-threads", "4")
                 .setAudioCodec("copy")
                 .done();
     }
