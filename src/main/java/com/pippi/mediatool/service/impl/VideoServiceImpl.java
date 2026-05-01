@@ -22,6 +22,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -217,6 +219,58 @@ public class VideoServiceImpl implements VideoService {
             FileUtil.deleteFile(outputFilePath);
             log.error("视频压缩异常：{}", e.getMessage());
             throw BusinessException.of("视频压缩异常");
+        }
+    }
+
+    @Override
+    public void batchCompress(List<String> filePaths) {
+        if (filePaths == null || filePaths.isEmpty()) {
+            throw BusinessException.of("文件路径列表不能为空");
+        }
+
+        // 按顺序处理每个文件
+        for (String filePath : filePaths) {
+            String outputFilePath = null;
+            try {
+                log.info("开始压缩文件：{}", filePath);
+
+                // 输出文件路径
+                FileUtil.makeDir(FilePathConstant.VIDEO_TEMP_PATH);
+                outputFilePath = FilePathConstant.VIDEO_TEMP_PATH + UUID.randomUUID() + ".mp4";
+
+                // 获取视频源信息
+                FFmpegProbeResult in = ffprobe.probe(filePath);
+
+                // 构建FFmpeg命令参数
+                FFmpegBuilder builder = buildCompressBuilder(filePath, outputFilePath);
+
+                // 创建FFmpeg执行器
+                FFmpegExecutor executor = new FFmpegExecutor(ffmpeg, ffprobe);
+
+                // 创建压缩任务并设置进度监听器
+                FFmpegJob job = executor.createJob(builder, new ProgressListener() {
+                    final double duration_ns = in.getFormat().duration * TimeUnit.SECONDS.toNanos(1);
+
+                    @Override
+                    public void progress(Progress progress) {
+                        if (progress.out_time_ns >= 0 && duration_ns > 0) {
+                            double percentage = (progress.out_time_ns / duration_ns) * 100;
+                            percentage = Math.min(percentage, 100);
+                            String percentageStr = String.format("%.2f", percentage);
+                            log.info("视频压缩进度：{}%", percentageStr);
+                        }
+                    }
+                });
+
+                // 同步执行压缩任务（阻塞等待完成）
+                job.run();
+                log.info("视频压缩完成，输入文件：{}，输出文件：{}", filePath, outputFilePath);
+            } catch (Exception e) {
+                if (outputFilePath != null) {
+                    FileUtil.deleteFile(outputFilePath);
+                }
+                log.error("视频压缩异常：{}", e.getMessage());
+            }
         }
     }
 

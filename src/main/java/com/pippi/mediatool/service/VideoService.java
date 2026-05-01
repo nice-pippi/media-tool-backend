@@ -2,6 +2,8 @@ package com.pippi.mediatool.service;
 
 import com.pippi.mediatool.mvc.co.TaskCO;
 
+import java.util.List;
+
 /**
  * @Author: hong
  * @CreateTime: 2026-02-21
@@ -33,4 +35,11 @@ public interface VideoService {
      * @return 压缩后的文件路径
      */
     String compress(String filePath);
+
+    /**
+     * 批量压缩视频文件（按顺序处理）
+     *
+     * @param filePaths 视频文件路径列表
+     */
+    void batchCompress(List<String> filePaths);
 }
