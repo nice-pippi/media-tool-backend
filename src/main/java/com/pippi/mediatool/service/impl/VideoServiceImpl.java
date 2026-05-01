@@ -21,6 +21,7 @@ import net.bramp.ffmpeg.progress.Progress;
 import net.bramp.ffmpeg.progress.ProgressListener;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -232,6 +233,9 @@ public class VideoServiceImpl implements VideoService {
             throw BusinessException.of("文件路径列表不能为空");
         }
 
+        // 记录成功压缩的源文件路径，用于最后统一删除
+        List<String> successFiles = new ArrayList<>();
+
         // 按顺序处理每个文件
         for (String filePath : filePaths) {
             String outputFilePath = null;
@@ -269,18 +273,29 @@ public class VideoServiceImpl implements VideoService {
                 // 同步执行压缩任务（阻塞等待完成）
                 job.run();
                 log.info("视频压缩完成，输入文件：{}，输出文件：{}", filePath, outputFilePath);
-
-                // 如果设置了删除源文件，则删除原始文件
-                if (deleteSource != null && deleteSource) {
-                    FileUtil.deleteFile(filePath);
-                    log.info("已删除源文件：{}", filePath);
-                }
+                
+                // 记录成功压缩的文件
+                successFiles.add(filePath);
             } catch (Exception e) {
                 if (outputFilePath != null) {
                     FileUtil.deleteFile(outputFilePath);
                 }
                 log.error("视频压缩异常：{}", e.getMessage());
             }
+        }
+
+        // 所有文件处理完成后，统一删除成功的源文件
+        if (deleteSource != null && deleteSource && !CollectionUtils.isEmpty(successFiles)) {
+            log.info("开始删除源文件，共 {} 个", successFiles.size());
+            for (String filePath : successFiles) {
+                try {
+                    FileUtil.deleteFile(filePath);
+                    log.info("已删除源文件：{}", filePath);
+                } catch (Exception e) {
+                    log.error("删除源文件失败：{}，错误信息：{}", filePath, e.getMessage());
+                }
+            }
+            log.info("源文件删除完成");
         }
     }
 
