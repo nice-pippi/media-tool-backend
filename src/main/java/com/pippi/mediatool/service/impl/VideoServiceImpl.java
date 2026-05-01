@@ -325,13 +325,12 @@ public class VideoServiceImpl implements VideoService {
      * @return FFmpegBuilder对象
      */
     private FFmpegBuilder buildCompressBuilder(String inputFile, String outputFilePath) {
-        // ffmpeg -i input.mp4 -c:v libx265 -crf 23 -preset fast -threads 4 -c:a copy output.mp4
+        // ffmpeg -i input.mp4 -c:v libx265 -crf 23 -c:a copy output.mp4
         return new FFmpegBuilder()
                 .setInput(inputFile)
                 .addOutput(outputFilePath)
                 .setVideoCodec("libx265")
                 .addExtraArgs("-crf", "23")
-                .addExtraArgs("-preset", "fast")
                 .setAudioCodec("copy")
                 .done();
     }
