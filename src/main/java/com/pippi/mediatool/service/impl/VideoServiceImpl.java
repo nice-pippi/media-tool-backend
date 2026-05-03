@@ -73,6 +73,10 @@ public class VideoServiceImpl implements VideoService {
             FFmpegBuilder builder;
             if (needCompress != null && needCompress) {
                 builder = buildCompressBuilder(url, outputFilePath);
+                // 如果不需要压缩（返回null），则使用复制流方式
+                if (builder == null) {
+                    builder = buildCopyBuilder(url, outputFilePath);
+                }
             } else {
                 builder = buildCopyBuilder(url, outputFilePath);
             }
@@ -135,6 +139,10 @@ public class VideoServiceImpl implements VideoService {
             FFmpegBuilder builder;
             if (compress != null && compress) {
                 builder = buildCompressBuilder(url, outputFilePath);
+                // 如果不需要压缩（返回null），则使用复制流方式
+                if (builder == null) {
+                    builder = buildCopyBuilder(url, outputFilePath);
+                }
             } else {
                 builder = buildCopyBuilder(url, outputFilePath);
             }
@@ -190,6 +198,13 @@ public class VideoServiceImpl implements VideoService {
             // 构建FFmpeg命令参数
             FFmpegBuilder builder = buildCompressBuilder(filePath, outputFilePath);
 
+            // 如果不需要压缩（返回null），直接复制文件
+            if (builder == null) {
+                log.info("视频无需压缩，直接复制：{}", filePath);
+                FileUtil.copyFile(filePath, outputFilePath);
+                return transferWinPath(outputFilePath);
+            }
+
             // 创建FFmpeg执行器
             FFmpegExecutor executor = new FFmpegExecutor(ffmpeg, ffprobe);
 
@@ -212,7 +227,28 @@ public class VideoServiceImpl implements VideoService {
             CompletableFuture.runAsync(() -> {
                 try {
                     job.run();
-                    log.info("视频压缩完成，输入文件：{}，输出文件：{}", filePath, outputFilePath);
+
+                    // 检查压缩后文件大小
+                    long sourceSize = FileUtil.getFileSize(filePath);
+                    long compressedSize = FileUtil.getFileSize(outputFilePath);
+
+                    if (sourceSize > 0 && compressedSize > 0) {
+                        if (compressedSize >= sourceSize) {
+                            log.warn("压缩后文件变大：原文件{}，压缩后{}，删除压缩文件",
+                                    FileUtil.formatFileSize(sourceSize),
+                                    FileUtil.formatFileSize(compressedSize));
+                            FileUtil.deleteFile(outputFilePath);
+                            // 复制原文件作为输出
+                            FileUtil.copyFile(filePath, outputFilePath);
+                        } else {
+                            log.info("视频压缩完成，输入文件：{}({})，输出文件：{}({})，减少：{}%",
+                                    filePath, FileUtil.formatFileSize(sourceSize),
+                                    outputFilePath, FileUtil.formatFileSize(compressedSize),
+                                    String.format("%.2f", (1 - (double) compressedSize / sourceSize) * 100));
+                        }
+                    } else {
+                        log.info("视频压缩完成，输入文件：{}，输出文件：{}", filePath, outputFilePath);
+                    }
                 } catch (Exception e) {
                     FileUtil.deleteFile(outputFilePath);
                     log.error("视频压缩异常：{}", e.getMessage());
@@ -254,6 +290,13 @@ public class VideoServiceImpl implements VideoService {
                 // 构建FFmpeg命令参数
                 FFmpegBuilder builder = buildCompressBuilder(filePath, outputFilePath);
 
+                // 如果不需要压缩（返回null），跳过该文件
+                if (builder == null) {
+                    log.info("视频无需压缩，跳过：{}", filePath);
+                    successFiles.add(filePath);
+                    continue;
+                }
+
                 // 创建FFmpeg执行器
                 FFmpegExecutor executor = new FFmpegExecutor(ffmpeg, ffprobe);
 
@@ -274,7 +317,28 @@ public class VideoServiceImpl implements VideoService {
 
                 // 同步执行压缩任务（阻塞等待完成）
                 job.run();
-                log.info("视频压缩完成，输入文件：{}，输出文件：{}", filePath, outputFilePath);
+
+                // 检查压缩后文件大小
+                long sourceSize = FileUtil.getFileSize(filePath);
+                long compressedSize = FileUtil.getFileSize(outputFilePath);
+
+                if (sourceSize > 0 && compressedSize > 0) {
+                    if (compressedSize >= sourceSize) {
+                        log.warn("压缩后文件变大：原文件{}，压缩后{}，删除压缩文件",
+                                FileUtil.formatFileSize(sourceSize),
+                                FileUtil.formatFileSize(compressedSize));
+                        FileUtil.deleteFile(outputFilePath);
+                        // 复制原文件作为输出
+                        FileUtil.copyFile(filePath, outputFilePath);
+                    } else {
+                        log.info("视频压缩完成，输入文件：{}({})，输出文件：{}({})，减少：{}%",
+                                filePath, FileUtil.formatFileSize(sourceSize),
+                                outputFilePath, FileUtil.formatFileSize(compressedSize),
+                                String.format("%.2f", (1 - (double) compressedSize / sourceSize) * 100));
+                    }
+                } else {
+                    log.info("视频压缩完成，输入文件：{}，输出文件：{}", filePath, outputFilePath);
+                }
 
                 // 记录成功压缩的文件
                 successFiles.add(filePath);
@@ -320,20 +384,159 @@ public class VideoServiceImpl implements VideoService {
     }
 
     /**
-     * 构建压缩的 builder（H.265 压缩）
+     * 构建压缩的 builder（H.265 压缩，支持动态CRF）
+     *
+     * @param inputFile      输入文件路径
+     * @param outputFilePath 输出文件路径
+     * @return FFmpegBuilder对象，如果不需要压缩则返回null
+     */
+    private FFmpegBuilder buildCompressBuilder(String inputFile, String outputFilePath) {
+        try {
+            // 获取视频源信息
+            FFmpegProbeResult probeResult = ffprobe.probe(inputFile);
+
+            // 智能判断是否需要压缩
+            if (!needCompress(probeResult)) {
+                log.info("视频已优化，跳过压缩：{}", inputFile);
+                return null;
+            }
+
+            // 计算动态CRF值
+            int crf = calculateDynamicCRF(probeResult);
+            log.info("使用动态CRF值：{} 压缩视频：{}", crf, inputFile);
+
+            // ffmpeg -i input.mp4 -c:v libx265 -crf {dynamic} -preset fast -threads 4 -c:a copy output.mp4
+            return new FFmpegBuilder()
+                    .setInput(inputFile)
+                    .addOutput(outputFilePath)
+                    .setVideoCodec("libx265")
+                    .addExtraArgs("-crf", String.valueOf(crf))
+                    .addExtraArgs("-preset", "fast")
+                    .addExtraArgs("-threads", "4")
+                    .setAudioCodec("copy")
+                    .setStrict(FFmpegBuilder.Strict.EXPERIMENTAL)
+                    .done();
+        } catch (IOException e) {
+            log.warn("无法获取视频信息，使用默认压缩参数：{}", e.getMessage());
+            // 降级处理：使用默认参数压缩
+            return buildDefaultCompressBuilder(inputFile, outputFilePath);
+        }
+    }
+
+    /**
+     * 判断视频是否需要压缩
+     *
+     * @param probeResult 视频探测结果
+     * @return true需要压缩，false不需要压缩
+     */
+    private boolean needCompress(FFmpegProbeResult probeResult) {
+        if (probeResult == null || probeResult.getStreams() == null || probeResult.getStreams().isEmpty()) {
+            return true; // 无法获取信息时默认压缩
+        }
+
+        // 查找视频流
+        net.bramp.ffmpeg.probe.FFmpegStream videoStream = probeResult.getStreams().stream()
+                .filter(stream -> stream.codec_type == net.bramp.ffmpeg.probe.FFmpegStream.CodecType.VIDEO)
+                .findFirst()
+                .orElse(null);
+
+        if (videoStream == null) {
+            return true; // 没有视频流，默认压缩
+        }
+
+        // 检查编码格式和码率
+        String codecName = videoStream.codec_name;
+        double bitRate = videoStream.bit_rate > 0 ? videoStream.bit_rate :
+                (probeResult.getFormat() != null ? probeResult.getFormat().bit_rate : 0);
+
+        if (bitRate <= 0) {
+            return true; // 无法获取码率时默认压缩
+        }
+
+        double bitRateKbps = bitRate / 1000;
+
+        // 如果已是H.265/H.264编码且码率低于1500kbps，则跳过压缩
+        if (("hevc".equalsIgnoreCase(codecName) || "h265".equalsIgnoreCase(codecName) ||
+                "h264".equalsIgnoreCase(codecName) || "avc".equalsIgnoreCase(codecName))) {
+            if (bitRateKbps < 1500) {
+                log.info("视频已是{}编码且码率较低({}kbps)，跳过压缩", codecName, bitRateKbps);
+                return false;
+            }
+        }
+
+        return true; // 其他情况需要压缩
+    }
+
+    /**
+     * 根据视频信息动态计算CRF值
+     *
+     * @param probeResult 视频探测结果
+     * @return CRF值（18-28范围）
+     */
+    private int calculateDynamicCRF(FFmpegProbeResult probeResult) {
+        if (probeResult == null || probeResult.getStreams() == null || probeResult.getStreams().isEmpty()) {
+            return 23; // 默认值
+        }
+
+        // 查找视频流
+        net.bramp.ffmpeg.probe.FFmpegStream videoStream = probeResult.getStreams().stream()
+                .filter(stream -> stream.codec_type == net.bramp.ffmpeg.probe.FFmpegStream.CodecType.VIDEO)
+                .findFirst()
+                .orElse(null);
+
+        if (videoStream == null) {
+            return 23; // 默认值
+        }
+
+        // 获取码率（bps）
+        double bitRate = videoStream.bit_rate > 0 ? videoStream.bit_rate :
+                (probeResult.getFormat() != null ? probeResult.getFormat().bit_rate : 0);
+
+        if (bitRate <= 0) {
+            return 23; // 无法获取码率时使用默认值
+        }
+
+        double bitRateKbps = bitRate / 1000;
+
+        // 根据码率动态调整CRF值（修正版）
+        // CRF值越大 = 压缩越强 = 文件越小 = 质量越低
+        // CRF值越小 = 压缩越弱 = 文件越大 = 质量越高
+        // 策略：高码率视频用较小CRF（强压缩），低码率视频用较大CRF（避免变大）
+        int crf;
+        if (bitRateKbps > 8000) {
+            crf = 23; // 高码率视频，适度压缩
+        } else if (bitRateKbps > 4000) {
+            crf = 24; // 中高码率
+        } else if (bitRateKbps > 2000) {
+            crf = 25; // 中等码率
+        } else if (bitRateKbps > 1500) {
+            crf = 26; // 中低码率，较强压缩
+        } else {
+            crf = 28; // 低码率，最强压缩避免文件变大
+        }
+
+        log.debug("视频码率：{}kbps，计算得到CRF值：{}", bitRateKbps, crf);
+        return crf;
+    }
+
+    /**
+     * 构建默认压缩的 builder（无法获取视频信息时使用）
      *
      * @param inputFile      输入文件路径
      * @param outputFilePath 输出文件路径
      * @return FFmpegBuilder对象
      */
-    private FFmpegBuilder buildCompressBuilder(String inputFile, String outputFilePath) {
-        // ffmpeg -i input.mp4 -c:v libx265 -crf 23 -c:a copy output.mp4
+    private FFmpegBuilder buildDefaultCompressBuilder(String inputFile, String outputFilePath) {
+        // 使用保守的默认参数
         return new FFmpegBuilder()
                 .setInput(inputFile)
                 .addOutput(outputFilePath)
                 .setVideoCodec("libx265")
-                .addExtraArgs("-crf", "23")
+                .addExtraArgs("-crf", "25")
+                .addExtraArgs("-preset", "fast")
+                .addExtraArgs("-threads", "4")
                 .setAudioCodec("copy")
+                .setStrict(FFmpegBuilder.Strict.EXPERIMENTAL)
                 .done();
     }
 
@@ -390,6 +593,14 @@ public class VideoServiceImpl implements VideoService {
                 // 构建FFmpeg命令参数
                 FFmpegBuilder builder = buildCompressBuilder(filePath, outputFilePath);
 
+                // 如果不需要压缩（返回null），跳过该文件
+                if (builder == null) {
+                    log.info("视频无需压缩，跳过：{}", filePath);
+                    FileUtil.copyFile(filePath, outputFilePath);
+                    successFiles.add(filePath);
+                    continue;
+                }
+
                 // 创建FFmpeg执行器
                 FFmpegExecutor executor = new FFmpegExecutor(ffmpeg, ffprobe);
 
@@ -410,7 +621,28 @@ public class VideoServiceImpl implements VideoService {
 
                 // 同步执行压缩任务（阻塞等待完成）
                 job.run();
-                log.info("视频压缩完成，输入文件：{}，输出文件：{}", filePath, outputFilePath);
+
+                // 检查压缩后文件大小
+                long sourceSize = FileUtil.getFileSize(filePath);
+                long compressedSize = FileUtil.getFileSize(outputFilePath);
+
+                if (sourceSize > 0 && compressedSize > 0) {
+                    if (compressedSize >= sourceSize) {
+                        log.warn("压缩后文件变大：原文件{}，压缩后{}，删除压缩文件",
+                                FileUtil.formatFileSize(sourceSize),
+                                FileUtil.formatFileSize(compressedSize));
+                        FileUtil.deleteFile(outputFilePath);
+                        // 复制原文件作为输出
+                        FileUtil.copyFile(filePath, outputFilePath);
+                    } else {
+                        log.info("视频压缩完成，输入文件：{}({})，输出文件：{}({})，减少：{}%",
+                                filePath, FileUtil.formatFileSize(sourceSize),
+                                outputFilePath, FileUtil.formatFileSize(compressedSize),
+                                String.format("%.2f", (1 - (double) compressedSize / sourceSize) * 100));
+                    }
+                } else {
+                    log.info("视频压缩完成，输入文件：{}，输出文件：{}", filePath, outputFilePath);
+                }
 
                 // 记录成功压缩的文件
                 successFiles.add(filePath);
