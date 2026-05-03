@@ -494,14 +494,6 @@ public class VideoServiceImpl implements VideoService {
                 // 构建FFmpeg命令参数
                 FFmpegBuilder builder = buildCompressBuilder(filePath, outputFilePath);
 
-                // 如果不需要压缩（返回null），跳过该文件
-                if (builder == null) {
-                    log.info("视频无需压缩，跳过：{}", filePath);
-                    FileUtil.copyFile(filePath, outputFilePath);
-                    successFiles.add(filePath);
-                    continue;
-                }
-
                 // 创建FFmpeg执行器
                 FFmpegExecutor executor = new FFmpegExecutor(ffmpeg, ffprobe);
 
