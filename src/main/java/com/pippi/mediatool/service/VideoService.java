@@ -3,8 +3,6 @@ package com.pippi.mediatool.service;
 import com.pippi.mediatool.mvc.co.BatchCompressCO;
 import com.pippi.mediatool.mvc.co.TaskCO;
 
-import java.util.List;
-
 /**
  * @Author: hong
  * @CreateTime: 2026-02-21
@@ -43,4 +41,12 @@ public interface VideoService {
      * @param co 批量压缩参数
      */
     void batchCompress(BatchCompressCO co);
+
+    /**
+     * 压缩指定目录下的所有视频文件
+     *
+     * @param dirPath 目录路径
+     * @param deleteSource 是否删除源文件
+     */
+    void dirCompress(String dirPath, Boolean deleteSource);
 }

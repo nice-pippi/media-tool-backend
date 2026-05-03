@@ -7,8 +7,6 @@ import com.pippi.mediatool.service.VideoService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-
 /**
  * @Author: hong
  * @CreateTime: 2026-02-10
@@ -41,6 +39,13 @@ public class VideoController {
     @PostMapping("/batch-compress")
     public R<Void> batchCompress(@RequestBody BatchCompressCO co) {
         videoService.batchCompress(co);
+        return R.success();
+    }
+
+    @PostMapping("/dir-compress")
+    public R<Void> dirCompress(@RequestParam String dirPath,
+                               @RequestParam(value = "deleteSource", required = false) Boolean deleteSource) {
+        videoService.dirCompress(dirPath, deleteSource);
         return R.success();
     }
 }

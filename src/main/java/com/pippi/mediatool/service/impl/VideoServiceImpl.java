@@ -19,10 +19,12 @@ import net.bramp.ffmpeg.job.FFmpegJob;
 import net.bramp.ffmpeg.probe.FFmpegProbeResult;
 import net.bramp.ffmpeg.progress.Progress;
 import net.bramp.ffmpeg.progress.ProgressListener;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -229,7 +231,7 @@ public class VideoServiceImpl implements VideoService {
         List<String> filePaths = co.getFilePaths();
         Boolean deleteSource = co.getDeleteSource();
 
-        if (filePaths == null || filePaths.isEmpty()) {
+        if (CollectionUtils.isEmpty(filePaths)) {
             throw BusinessException.of("文件路径列表不能为空");
         }
 
@@ -273,7 +275,7 @@ public class VideoServiceImpl implements VideoService {
                 // 同步执行压缩任务（阻塞等待完成）
                 job.run();
                 log.info("视频压缩完成，输入文件：{}，输出文件：{}", filePath, outputFilePath);
-                
+
                 // 记录成功压缩的文件
                 successFiles.add(filePath);
             } catch (Exception e) {
@@ -340,6 +342,101 @@ public class VideoServiceImpl implements VideoService {
      */
     private String transferWinPath(String fileName) {
         return fileName.replace("\\", "/");
+    }
+
+    @Override
+    public void dirCompress(String dirPath, Boolean deleteSource) {
+        if (StringUtils.isEmpty(dirPath)) {
+            throw BusinessException.of("目录路径不能为空");
+        }
+
+        File directory = new File(dirPath);
+        if (!directory.exists() || !directory.isDirectory()) {
+            throw BusinessException.of("目录不存在或不是有效目录：" + dirPath);
+        }
+
+        // 获取目录下所有视频文件
+        File[] videoFiles = directory.listFiles((dir, name) -> {
+            String lowerName = name.toLowerCase();
+            return lowerName.endsWith(".mp4") || lowerName.endsWith(".avi") ||
+                    lowerName.endsWith(".mov") || lowerName.endsWith(".mkv") ||
+                    lowerName.endsWith(".flv") || lowerName.endsWith(".wmv");
+        });
+
+        if (videoFiles == null || videoFiles.length == 0) {
+            log.warn("目录下没有找到视频文件：{}", dirPath);
+            return;
+        }
+
+        log.info("找到 {} 个视频文件，开始批量压缩", videoFiles.length);
+
+        // 记录成功压缩的文件
+        List<String> successFiles = new ArrayList<>();
+
+        // 按顺序处理每个文件
+        for (File videoFile : videoFiles) {
+            String filePath = videoFile.getAbsolutePath();
+            String outputFilePath = null;
+            try {
+                log.info("开始压缩文件：{}", filePath);
+
+                // 输出文件路径
+                FileUtil.makeDir(FilePathConstant.VIDEO_TEMP_PATH);
+                outputFilePath = FilePathConstant.VIDEO_TEMP_PATH + UUID.randomUUID() + ".mp4";
+
+                // 获取视频源信息
+                FFmpegProbeResult in = ffprobe.probe(filePath);
+
+                // 构建FFmpeg命令参数
+                FFmpegBuilder builder = buildCompressBuilder(filePath, outputFilePath);
+
+                // 创建FFmpeg执行器
+                FFmpegExecutor executor = new FFmpegExecutor(ffmpeg, ffprobe);
+
+                // 创建压缩任务并设置进度监听器
+                FFmpegJob job = executor.createJob(builder, new ProgressListener() {
+                    final double duration_ns = in.getFormat().duration * TimeUnit.SECONDS.toNanos(1);
+
+                    @Override
+                    public void progress(Progress progress) {
+                        if (progress.out_time_ns >= 0 && duration_ns > 0) {
+                            double percentage = (progress.out_time_ns / duration_ns) * 100;
+                            percentage = Math.min(percentage, 100);
+                            String percentageStr = String.format("%.2f", percentage);
+                            log.info("视频压缩进度：{}%", percentageStr);
+                        }
+                    }
+                });
+
+                // 同步执行压缩任务（阻塞等待完成）
+                job.run();
+                log.info("视频压缩完成，输入文件：{}，输出文件：{}", filePath, outputFilePath);
+
+                // 记录成功压缩的文件
+                successFiles.add(filePath);
+            } catch (Exception e) {
+                if (outputFilePath != null) {
+                    FileUtil.deleteFile(outputFilePath);
+                }
+                log.error("视频压缩异常：{}", e.getMessage());
+            }
+        }
+
+        // 所有文件处理完成后，统一删除成功的源文件
+        if (deleteSource != null && deleteSource && !CollectionUtils.isEmpty(successFiles)) {
+            log.info("开始删除源文件，共 {} 个", successFiles.size());
+            for (String filePath : successFiles) {
+                try {
+                    FileUtil.deleteFile(filePath);
+                    log.info("已删除源文件：{}", filePath);
+                } catch (Exception e) {
+                    log.error("删除源文件失败：{}，错误信息：{}", filePath, e.getMessage());
+                }
+            }
+            log.info("源文件删除完成");
+        }
+
+        log.info("目录压缩完成，共处理 {} 个文件，成功 {} 个", videoFiles.length, successFiles.size());
     }
 
 }
