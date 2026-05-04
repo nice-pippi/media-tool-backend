@@ -19,7 +19,7 @@ public interface VideoService {
     void createDownloadTask(TaskCO co);
 
     /**
-     * 简单下载
+     * 简易下载
      *
      * @param url          视频地址
      * @param compress 是否需要压缩
