@@ -259,91 +259,98 @@ public class VideoServiceImpl implements VideoService {
             throw BusinessException.of("文件路径列表不能为空");
         }
 
-        // 记录成功压缩的源文件路径，用于最后统一删除
-        List<String> successFiles = new ArrayList<>();
-
-        // 按顺序处理每个文件
-        for (String filePath : filePaths) {
-            String outputFilePath = null;
+        // 参数校验保留在同步线程，耗时压缩循环放到后台异步执行，接口立即返回
+        CompletableFuture.runAsync(() -> {
             try {
-                log.info("开始压缩文件：{}", filePath);
+                // 记录成功压缩的源文件路径，用于最后统一删除
+                List<String> successFiles = new ArrayList<>();
 
-                // 输出文件路径
-                FileUtil.makeDir(FilePathConstant.VIDEO_TEMP_PATH);
-                outputFilePath = FilePathConstant.VIDEO_TEMP_PATH + UUID.randomUUID() + ".mp4";
+                // 按顺序处理每个文件（保持原有串行压缩逻辑）
+                for (String filePath : filePaths) {
+                    String outputFilePath = null;
+                    try {
+                        log.info("开始压缩文件：{}", filePath);
 
-                // 获取视频源信息
-                FFmpegProbeResult in = ffprobe.probe(filePath);
+                        // 输出文件路径
+                        FileUtil.makeDir(FilePathConstant.VIDEO_TEMP_PATH);
+                        outputFilePath = FilePathConstant.VIDEO_TEMP_PATH + UUID.randomUUID() + ".mp4";
 
-                // 构建FFmpeg命令参数
-                FFmpegBuilder builder = buildCompressBuilder(filePath, outputFilePath);
+                        // 获取视频源信息
+                        FFmpegProbeResult in = ffprobe.probe(filePath);
 
-                // 创建FFmpeg执行器
-                FFmpegExecutor executor = new FFmpegExecutor(ffmpeg, ffprobe);
+                        // 构建FFmpeg命令参数
+                        FFmpegBuilder builder = buildCompressBuilder(filePath, outputFilePath);
 
-                // 创建压缩任务并设置进度监听器
-                FFmpegJob job = executor.createJob(builder, new ProgressListener() {
-                    final double duration_ns = in.getFormat().duration * TimeUnit.SECONDS.toNanos(1);
+                        // 创建FFmpeg执行器
+                        FFmpegExecutor executor = new FFmpegExecutor(ffmpeg, ffprobe);
 
-                    @Override
-                    public void progress(Progress progress) {
-                        if (progress.out_time_ns >= 0 && duration_ns > 0) {
-                            double percentage = (progress.out_time_ns / duration_ns) * 100;
-                            percentage = Math.min(percentage, 100);
-                            String percentageStr = String.format("%.2f", percentage);
-                            log.info("视频压缩进度：{}%", percentageStr);
+                        // 创建压缩任务并设置进度监听器
+                        FFmpegJob job = executor.createJob(builder, new ProgressListener() {
+                            final double duration_ns = in.getFormat().duration * TimeUnit.SECONDS.toNanos(1);
+
+                            @Override
+                            public void progress(Progress progress) {
+                                if (progress.out_time_ns >= 0 && duration_ns > 0) {
+                                    double percentage = (progress.out_time_ns / duration_ns) * 100;
+                                    percentage = Math.min(percentage, 100);
+                                    String percentageStr = String.format("%.2f", percentage);
+                                    log.info("视频压缩进度：{}%", percentageStr);
+                                }
+                            }
+                        });
+
+                        // 同步执行压缩任务（阻塞等待完成）
+                        job.run();
+
+                        // 检查压缩后文件大小
+                        long sourceSize = FileUtil.getFileSize(filePath);
+                        long compressedSize = FileUtil.getFileSize(outputFilePath);
+
+                        if (sourceSize > 0 && compressedSize > 0) {
+                            if (compressedSize >= sourceSize) {
+                                log.warn("压缩后文件变大：原文件{}，压缩后{}，删除压缩文件",
+                                        FileUtil.formatFileSize(sourceSize),
+                                        FileUtil.formatFileSize(compressedSize));
+                                FileUtil.deleteFile(outputFilePath);
+                                // 复制原文件作为输出
+                                FileUtil.copyFile(filePath, outputFilePath);
+                            } else {
+                                log.info("视频压缩完成，输入文件：{}({})，输出文件：{}({})，减少：{}%",
+                                        filePath, FileUtil.formatFileSize(sourceSize),
+                                        outputFilePath, FileUtil.formatFileSize(compressedSize),
+                                        String.format("%.2f", (1 - (double) compressedSize / sourceSize) * 100));
+                            }
+                        } else {
+                            log.info("视频压缩完成，输入文件：{}，输出文件：{}", filePath, outputFilePath);
+                        }
+
+                        // 记录成功压缩的文件
+                        successFiles.add(filePath);
+                    } catch (Exception e) {
+                        if (outputFilePath != null) {
+                            FileUtil.deleteFile(outputFilePath);
+                        }
+                        log.error("视频压缩异常：{}", e.getMessage());
+                    }
+                }
+
+                // 所有文件处理完成后，统一删除成功的源文件
+                if (deleteSource != null && deleteSource && !CollectionUtils.isEmpty(successFiles)) {
+                    log.info("开始删除源文件，共 {} 个", successFiles.size());
+                    for (String filePath : successFiles) {
+                        try {
+                            FileUtil.deleteFile(filePath);
+                            log.info("已删除源文件：{}", filePath);
+                        } catch (Exception e) {
+                            log.error("删除源文件失败：{}，错误信息：{}", filePath, e.getMessage());
                         }
                     }
-                });
-
-                // 同步执行压缩任务（阻塞等待完成）
-                job.run();
-
-                // 检查压缩后文件大小
-                long sourceSize = FileUtil.getFileSize(filePath);
-                long compressedSize = FileUtil.getFileSize(outputFilePath);
-
-                if (sourceSize > 0 && compressedSize > 0) {
-                    if (compressedSize >= sourceSize) {
-                        log.warn("压缩后文件变大：原文件{}，压缩后{}，删除压缩文件",
-                                FileUtil.formatFileSize(sourceSize),
-                                FileUtil.formatFileSize(compressedSize));
-                        FileUtil.deleteFile(outputFilePath);
-                        // 复制原文件作为输出
-                        FileUtil.copyFile(filePath, outputFilePath);
-                    } else {
-                        log.info("视频压缩完成，输入文件：{}({})，输出文件：{}({})，减少：{}%",
-                                filePath, FileUtil.formatFileSize(sourceSize),
-                                outputFilePath, FileUtil.formatFileSize(compressedSize),
-                                String.format("%.2f", (1 - (double) compressedSize / sourceSize) * 100));
-                    }
-                } else {
-                    log.info("视频压缩完成，输入文件：{}，输出文件：{}", filePath, outputFilePath);
+                    log.info("源文件删除完成");
                 }
-
-                // 记录成功压缩的文件
-                successFiles.add(filePath);
             } catch (Exception e) {
-                if (outputFilePath != null) {
-                    FileUtil.deleteFile(outputFilePath);
-                }
-                log.error("视频压缩异常：{}", e.getMessage());
+                log.error("批量压缩后台任务异常：{}", e.getMessage());
             }
-        }
-
-        // 所有文件处理完成后，统一删除成功的源文件
-        if (deleteSource != null && deleteSource && !CollectionUtils.isEmpty(successFiles)) {
-            log.info("开始删除源文件，共 {} 个", successFiles.size());
-            for (String filePath : successFiles) {
-                try {
-                    FileUtil.deleteFile(filePath);
-                    log.info("已删除源文件：{}", filePath);
-                } catch (Exception e) {
-                    log.error("删除源文件失败：{}，错误信息：{}", filePath, e.getMessage());
-                }
-            }
-            log.info("源文件删除完成");
-        }
+        });
     }
 
     /**
@@ -474,94 +481,101 @@ public class VideoServiceImpl implements VideoService {
 
         log.info("找到 {} 个视频文件，开始批量压缩", videoFiles.length);
 
-        // 记录成功压缩的文件
-        List<String> successFiles = new ArrayList<>();
-
-        // 按顺序处理每个文件
-        for (File videoFile : videoFiles) {
-            String filePath = videoFile.getAbsolutePath();
-            String outputFilePath = null;
+        // 目录扫描保留在同步线程，耗时压缩循环放到后台异步执行，接口立即返回
+        CompletableFuture.runAsync(() -> {
             try {
-                log.info("开始压缩文件：{}", filePath);
+                // 记录成功压缩的文件
+                List<String> successFiles = new ArrayList<>();
 
-                // 输出文件路径
-                FileUtil.makeDir(FilePathConstant.VIDEO_TEMP_PATH);
-                outputFilePath = FilePathConstant.VIDEO_TEMP_PATH + UUID.randomUUID() + ".mp4";
+                // 按顺序处理每个文件（保持原有串行压缩逻辑）
+                for (File videoFile : videoFiles) {
+                    String filePath = videoFile.getAbsolutePath();
+                    String outputFilePath = null;
+                    try {
+                        log.info("开始压缩文件：{}", filePath);
 
-                // 获取视频源信息
-                FFmpegProbeResult in = ffprobe.probe(filePath);
+                        // 输出文件路径
+                        FileUtil.makeDir(FilePathConstant.VIDEO_TEMP_PATH);
+                        outputFilePath = FilePathConstant.VIDEO_TEMP_PATH + UUID.randomUUID() + ".mp4";
 
-                // 构建FFmpeg命令参数
-                FFmpegBuilder builder = buildCompressBuilder(filePath, outputFilePath);
+                        // 获取视频源信息
+                        FFmpegProbeResult in = ffprobe.probe(filePath);
 
-                // 创建FFmpeg执行器
-                FFmpegExecutor executor = new FFmpegExecutor(ffmpeg, ffprobe);
+                        // 构建FFmpeg命令参数
+                        FFmpegBuilder builder = buildCompressBuilder(filePath, outputFilePath);
 
-                // 创建压缩任务并设置进度监听器
-                FFmpegJob job = executor.createJob(builder, new ProgressListener() {
-                    final double duration_ns = in.getFormat().duration * TimeUnit.SECONDS.toNanos(1);
+                        // 创建FFmpeg执行器
+                        FFmpegExecutor executor = new FFmpegExecutor(ffmpeg, ffprobe);
 
-                    @Override
-                    public void progress(Progress progress) {
-                        if (progress.out_time_ns >= 0 && duration_ns > 0) {
-                            double percentage = (progress.out_time_ns / duration_ns) * 100;
-                            percentage = Math.min(percentage, 100);
-                            String percentageStr = String.format("%.2f", percentage);
-                            log.info("视频压缩进度：{}%", percentageStr);
+                        // 创建压缩任务并设置进度监听器
+                        FFmpegJob job = executor.createJob(builder, new ProgressListener() {
+                            final double duration_ns = in.getFormat().duration * TimeUnit.SECONDS.toNanos(1);
+
+                            @Override
+                            public void progress(Progress progress) {
+                                if (progress.out_time_ns >= 0 && duration_ns > 0) {
+                                    double percentage = (progress.out_time_ns / duration_ns) * 100;
+                                    percentage = Math.min(percentage, 100);
+                                    String percentageStr = String.format("%.2f", percentage);
+                                    log.info("视频压缩进度：{}%", percentageStr);
+                                }
+                            }
+                        });
+
+                        // 同步执行压缩任务（阻塞等待完成）
+                        job.run();
+
+                        // 检查压缩后文件大小
+                        long sourceSize = FileUtil.getFileSize(filePath);
+                        long compressedSize = FileUtil.getFileSize(outputFilePath);
+
+                        if (sourceSize > 0 && compressedSize > 0) {
+                            if (compressedSize >= sourceSize) {
+                                log.warn("压缩后文件变大：原文件{}，压缩后{}，删除压缩文件",
+                                        FileUtil.formatFileSize(sourceSize),
+                                        FileUtil.formatFileSize(compressedSize));
+                                FileUtil.deleteFile(outputFilePath);
+                                // 复制原文件作为输出
+                                FileUtil.copyFile(filePath, outputFilePath);
+                            } else {
+                                log.info("视频压缩完成，输入文件：{}({})，输出文件：{}({})，减少：{}%",
+                                        filePath, FileUtil.formatFileSize(sourceSize),
+                                        outputFilePath, FileUtil.formatFileSize(compressedSize),
+                                        String.format("%.2f", (1 - (double) compressedSize / sourceSize) * 100));
+                            }
+                        } else {
+                            log.info("视频压缩完成，输入文件：{}，输出文件：{}", filePath, outputFilePath);
+                        }
+
+                        // 记录成功压缩的文件
+                        successFiles.add(filePath);
+                    } catch (Exception e) {
+                        if (outputFilePath != null) {
+                            FileUtil.deleteFile(outputFilePath);
+                        }
+                        log.error("视频压缩异常：{}", e.getMessage());
+                    }
+                }
+
+                // 所有文件处理完成后，统一删除成功的源文件
+                if (deleteSource != null && deleteSource && !CollectionUtils.isEmpty(successFiles)) {
+                    log.info("开始删除源文件，共 {} 个", successFiles.size());
+                    for (String filePath : successFiles) {
+                        try {
+                            FileUtil.deleteFile(filePath);
+                            log.info("已删除源文件：{}", filePath);
+                        } catch (Exception e) {
+                            log.error("删除源文件失败：{}，错误信息：{}", filePath, e.getMessage());
                         }
                     }
-                });
-
-                // 同步执行压缩任务（阻塞等待完成）
-                job.run();
-
-                // 检查压缩后文件大小
-                long sourceSize = FileUtil.getFileSize(filePath);
-                long compressedSize = FileUtil.getFileSize(outputFilePath);
-
-                if (sourceSize > 0 && compressedSize > 0) {
-                    if (compressedSize >= sourceSize) {
-                        log.warn("压缩后文件变大：原文件{}，压缩后{}，删除压缩文件",
-                                FileUtil.formatFileSize(sourceSize),
-                                FileUtil.formatFileSize(compressedSize));
-                        FileUtil.deleteFile(outputFilePath);
-                        // 复制原文件作为输出
-                        FileUtil.copyFile(filePath, outputFilePath);
-                    } else {
-                        log.info("视频压缩完成，输入文件：{}({})，输出文件：{}({})，减少：{}%",
-                                filePath, FileUtil.formatFileSize(sourceSize),
-                                outputFilePath, FileUtil.formatFileSize(compressedSize),
-                                String.format("%.2f", (1 - (double) compressedSize / sourceSize) * 100));
-                    }
-                } else {
-                    log.info("视频压缩完成，输入文件：{}，输出文件：{}", filePath, outputFilePath);
+                    log.info("源文件删除完成");
                 }
 
-                // 记录成功压缩的文件
-                successFiles.add(filePath);
+                log.info("目录压缩完成，共处理 {} 个文件，成功 {} 个", videoFiles.length, successFiles.size());
             } catch (Exception e) {
-                if (outputFilePath != null) {
-                    FileUtil.deleteFile(outputFilePath);
-                }
-                log.error("视频压缩异常：{}", e.getMessage());
+                log.error("目录压缩后台任务异常：{}", e.getMessage());
             }
-        }
-
-        // 所有文件处理完成后，统一删除成功的源文件
-        if (deleteSource != null && deleteSource && !CollectionUtils.isEmpty(successFiles)) {
-            log.info("开始删除源文件，共 {} 个", successFiles.size());
-            for (String filePath : successFiles) {
-                try {
-                    FileUtil.deleteFile(filePath);
-                    log.info("已删除源文件：{}", filePath);
-                } catch (Exception e) {
-                    log.error("删除源文件失败：{}，错误信息：{}", filePath, e.getMessage());
-                }
-            }
-            log.info("源文件删除完成");
-        }
-
-        log.info("目录压缩完成，共处理 {} 个文件，成功 {} 个", videoFiles.length, successFiles.size());
+        });
     }
 
 }
